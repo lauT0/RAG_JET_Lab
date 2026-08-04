@@ -1,0 +1,6 @@
+chromadb
+openai
+PyPDF2
+google
+ollama
+sentence_transformers
