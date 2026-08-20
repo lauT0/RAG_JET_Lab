@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-serif: "Source Serif 4", "Georgia", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", "Consolas", monospace;
+
+  --color-canvas: #faf9f7;
+  --color-canvas-elevated: #ffffff;
+  --color-ink: #1a1a1a;
+  --color-ink-muted: #5c5a56;
+  --color-ink-faint: #8a8780;
+  --color-line: #e6e3dc;
+  --color-line-strong: #d4d0c8;
+  --color-accent: #2f5d50;
+  --color-accent-soft: #e8f0ed;
+  --color-warn: #8a5a2b;
+  --color-warn-soft: #f5ebe0;
+
+  --color-canvas-dark: #141413;
+  --color-canvas-elevated-dark: #1c1c1a;
+  --color-ink-dark: #f0eee9;
+  --color-ink-muted-dark: #a8a59e;
+  --color-ink-faint-dark: #6e6b64;
+  --color-line-dark: #2e2d2a;
+  --color-line-strong-dark: #3d3c38;
+  --color-accent-dark: #7eb8a4;
+  --color-accent-soft-dark: #1e332c;
+  --color-warn-dark: #d4a574;
+  --color-warn-soft-dark: #2e2418;
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply m-0 min-h-dvh bg-canvas text-ink font-serif;
+  }
+
+  .dark body,
+  .dark {
+    background-color: var(--color-canvas-dark);
+    color: var(--color-ink-dark);
+  }
+
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+
+  .dark *:focus-visible {
+    outline-color: var(--color-accent-dark);
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: caret-blink 1s step-end infinite;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

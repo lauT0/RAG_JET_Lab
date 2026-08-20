@@ -1,0 +1,10 @@
+# Backend dependencies (install when implementing the API).
+# Keep root requirements.txt for the notebook experiments.
+
+# fastapi
+# uvicorn[standard]
+# chromadb
+# sentence-transformers
+# ollama
+# pypdf
+# python-multipart
