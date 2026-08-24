@@ -21,6 +21,10 @@ Where things should go:
       → run_ingestion()
 """
 
+import re
+
+from transformers import AutoTokenizer
+
 # from pathlib import Path
 #
 #
@@ -32,13 +36,83 @@ Where things should go:
 # def normalize_document(doc):
 #     # TODO: strip boilerplate, normalize whitespace, attach country/sourceType
 #     raise NotImplementedError
-#
-#
-# def chunk_document(doc, chunk_size: int = 500, overlap: int = 80):
-#     # TODO: produce list[{text, metadata}] suitable for embedding
-#     raise NotImplementedError
-#
-#
+
+"""Chunking strategy:"""
+
+_tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+EMBEDDING_MAX_TOKENS = 256
+MIN_SENTENCE_TOKENS = 4
+
+
+def count_tokens(text: str) -> int:
+    return len(_tokenizer.encode(text, add_special_tokens=False)) #how many tokens in this string
+
+
+def split_sentences(text: str) -> list[str]:
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [s for s in sentences if s]
+#splits sentences based on . ! and ?
+
+def _merge_short_fragments(sentences: list[str], min_tokens: int = MIN_SENTENCE_TOKENS) -> list[str]:
+    merged = []
+    buffer = ""
+    for sentence in sentences:
+        buffer = f"{buffer} {sentence}".strip() if buffer else sentence
+        if count_tokens(buffer) >= min_tokens:
+            merged.append(buffer)
+            buffer = ""
+    if buffer:
+        if merged:
+            merged[-1] = f"{merged[-1]} {buffer}"
+        else:
+            merged.append(buffer)
+    return merged
+# makes sure that short "sentences" aren't counted as their own chunks, but are merged into neighboring sentences instead
+
+def _hard_split(sentence: str, chunk_size: int) -> list[str]:
+    ids = _tokenizer.encode(sentence, add_special_tokens=False)
+    return [_tokenizer.decode(ids[i:i + chunk_size]) for i in range(0, len(ids), chunk_size)]
+#splits a long sentence into smaller chunks if it exceeds the chunk limit
+
+
+def chunk_text(text: str, chunk_size: int = 200, overlap: int = 25) -> list[str]:
+    chunk_size = min(chunk_size, EMBEDDING_MAX_TOKENS) #right now it is 256
+
+    sentences = []
+    for sentence in _merge_short_fragments(split_sentences(text)):
+        if count_tokens(sentence) > chunk_size:
+            sentences.extend(_hard_split(sentence, chunk_size))
+        else:
+            sentences.append(sentence)
+
+    chunks = []
+    current_sentences, current_len = [], 0
+
+    for sentence in sentences:
+        sentence_len = count_tokens(sentence)
+        if current_sentences and current_len + sentence_len > chunk_size:
+            chunk_str = " ".join(current_sentences)
+            chunks.append(chunk_str)
+            tail_ids = _tokenizer.encode(chunk_str, add_special_tokens=False)[-overlap:]
+            overlap_text = _tokenizer.decode(tail_ids) if tail_ids else ""
+            current_sentences = [overlap_text] if overlap_text else []
+            current_len = len(tail_ids)
+        current_sentences.append(sentence)
+        current_len += sentence_len
+
+    if current_sentences:
+        chunks.append(" ".join(current_sentences))
+    return chunks
+
+
+def chunk_document(doc: dict, chunk_size: int = 200, overlap: int = 25) -> list[dict]:
+    # doc = {"text": ..., "metadata": {...}} -- pairs each chunk with the doc's metadata + its index
+    return [
+        {"text": chunk, "metadata": {**doc["metadata"], "chunk_index": i}}
+        for i, chunk in enumerate(chunk_text(doc["text"], chunk_size, overlap))
+    ]
+
+
 # def embed_chunks(chunks):
 #     # TODO: call sentence_transformers (or API embedder); return vectors
 #     raise NotImplementedError
