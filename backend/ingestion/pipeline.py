@@ -21,21 +21,48 @@ Where things should go:
       → run_ingestion()
 """
 
+import json
 import re
+from collections import Counter
+from functools import lru_cache
+from pathlib import Path
 
+import chromadb
+from PyPDF2 import PdfReader
+from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 
-# from pathlib import Path
-#
-#
-# def load_documents(data_dir: Path):
-#     # TODO: walk data_dir; parse PDF/TXT; attach source path + type guess
-#     raise NotImplementedError
-#
-#
-# def normalize_document(doc):
-#     # TODO: strip boilerplate, normalize whitespace, attach country/sourceType
-#     raise NotImplementedError
+
+def load_documents(data_dir: Path):
+    # walk data_dir; parse PDF/TXT; attach source path + type guess
+    docs = []
+    for path in sorted(Path(data_dir).iterdir()):
+        if path.suffix.lower() == ".pdf":
+            reader = PdfReader(path)
+            text = " ".join(page.extract_text() for page in reader.pages if page.extract_text())
+        elif path.suffix.lower() in (".txt", ".md"):
+            text = path.read_text(encoding="utf-8")
+        else:
+            continue
+        docs.append({"text": text, "metadata": {"source": str(path)}})
+    return docs
+
+
+@lru_cache(maxsize=None)
+def _load_manifest(data_dir: str) -> dict:
+    manifest_path = Path(data_dir) / "manifest.json"
+    if not manifest_path.exists():
+        return {}
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def normalize_document(doc):
+    # strip boilerplate, normalize whitespace, attach country/sourceType from data_dir/manifest.json
+    text = re.sub(r"\s+", " ", doc["text"]).strip()
+    source = Path(doc["metadata"]["source"])
+    manifest = _load_manifest(str(source.parent))
+    metadata = {**doc["metadata"], **manifest.get(source.name, {})}
+    return {"text": text, "metadata": metadata}
 
 """Chunking strategy:"""
 
@@ -113,20 +140,42 @@ def chunk_document(doc: dict, chunk_size: int = 200, overlap: int = 25) -> list[
     ]
 
 
-# def embed_chunks(chunks):
-#     # TODO: call sentence_transformers (or API embedder); return vectors
-#     raise NotImplementedError
-#
-#
-# def upsert_to_store(chunks, embeddings, collection_name: str = "jet_lab"):
-#     # TODO: write to chroma_db/ with ids + metadata used by the inspector UI
-#     raise NotImplementedError
-#
-#
-# def run_ingestion(data_dir: str = "toy_rag_data"):
-#     # TODO: orchestrate the steps above; log counts for the corpus indicator
-#     raise NotImplementedError
-#
-#
-# if __name__ == "__main__":
-#     run_ingestion()
+_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def embed_chunks(chunks):
+    # call sentence_transformers (or API embedder); return vectors
+    return _embedder.encode([c["text"] for c in chunks]).tolist()
+
+
+def upsert_to_store(chunks, embeddings, collection_name: str = "jet_lab"):
+    # write to chroma_db/ with ids + metadata used by the inspector UI
+    client = chromadb.PersistentClient(path="./chroma_db")
+    collection = client.get_or_create_collection(name=collection_name)
+    ids = [f'{c["metadata"]["source"]}::{c["metadata"]["chunk_index"]}' for c in chunks]
+    collection.upsert(
+        documents=[c["text"] for c in chunks],
+        embeddings=embeddings,
+        metadatas=[c["metadata"] for c in chunks],
+        ids=ids,
+    )
+
+
+def run_ingestion(data_dir: str = "rag_data", collection_name: str = "jet_lab"):
+    # orchestrate the steps above; log counts for the corpus indicator
+    docs = load_documents(data_dir)
+    chunks = []
+    for doc in docs:
+        chunks += chunk_document(normalize_document(doc))
+
+    embeddings = embed_chunks(chunks)
+    upsert_to_store(chunks, embeddings, collection_name)
+
+    counts = Counter(c["metadata"]["source"] for c in chunks)
+    print(f"ingested {len(chunks)} chunks from {len(docs)} documents into '{collection_name}'")
+    for source, n in counts.items():
+        print(f"  {n:4d}  {source}")
+
+
+if __name__ == "__main__":
+    run_ingestion()
