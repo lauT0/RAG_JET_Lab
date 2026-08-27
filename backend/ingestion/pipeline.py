@@ -75,7 +75,7 @@ def _hard_split(sentence: str, chunk_size: int) -> list[str]:
 #splits a long sentence into smaller chunks if it exceeds the chunk limit
 
 
-def chunk_text(text: str, chunk_size: int = 200, overlap: int = 25) -> list[str]:
+def chunk_text(text: str, chunk_size: int = 200, overlap: int = 25) -> list[str]: # try up to 500 to se what gets the best chunks
     chunk_size = min(chunk_size, EMBEDDING_MAX_TOKENS) #right now it is 256
 
     sentences = []
