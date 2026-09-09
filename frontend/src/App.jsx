@@ -119,7 +119,7 @@ const RUBRIC_DIMS = [
   { id: 'nuance', label: 'Nuance' },
 ]
 
-const USE_MOCK = true // set false when FastAPI /api/chat & /api/retrieve are live
+const USE_MOCK = false // set false when FastAPI /api/chat & /api/retrieve are live
 
 // -----------------------------------------------------------------------------
 // API boundary — swap implementations here only

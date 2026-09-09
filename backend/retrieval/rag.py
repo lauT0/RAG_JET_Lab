@@ -27,14 +27,17 @@ SIMILARITY_THRESHOLD = 0.55  # keep in sync with frontend MOCK.similarityThresho
 LLM_MODEL = "gpt-5.6-luna" 
 
 
-from backend.models import client, rr_model, collection
+#from backend.models import client, rr_model, 
+
+client = chromadb.PersistentClient(path="./chroma_db")
+collection = client.get_collection(name="jet_lab")
+rr_model = CrossEncoder("cross-encoder/ettin-reranker-68m-v1")
+_embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 def embed_query(query: str):
     # TODO: embed with the same model used in ingestion
-    return client.embeddings.create(
-        model="text-embedding-3-small",
-        input=query
-    ).data[0].embedding
+    return _embedder.encode(query)
+
 
 
 def search_store(query, query_embedding, top_k: int = 5, filters: dict | None = None):
