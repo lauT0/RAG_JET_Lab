@@ -36,7 +36,7 @@ from transformers import AutoTokenizer
 def load_documents(data_dir: Path):
     # walk data_dir; parse PDF/TXT; attach source path + type guess
     docs = []
-    for path in sorted(Path(data_dir).iterdir()):
+    for path in sorted(Path(data_dir).rglob("*")):
         if path.suffix.lower() == ".pdf":
             reader = PdfReader(path)
             text = " ".join(page.extract_text() for page in reader.pages if page.extract_text())
@@ -56,12 +56,23 @@ def _load_manifest(data_dir: str) -> dict:
     return json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
+def _find_manifest(source: Path):
+    # walks up from the file to the nearest folder containing manifest.json
+    for parent in source.parents:
+        if (parent / "manifest.json").exists():
+            return parent, _load_manifest(str(parent))
+    return source.parent, {}
+
+
 def normalize_document(doc):
     # strip boilerplate, normalize whitespace, attach country/sourceType from data_dir/manifest.json
     text = re.sub(r"\s+", " ", doc["text"]).strip()
     source = Path(doc["metadata"]["source"])
-    manifest = _load_manifest(str(source.parent))
-    metadata = {**doc["metadata"], **manifest.get(source.name, {})}
+    root, manifest = _find_manifest(source)
+    key = source.relative_to(root).as_posix() # manifest keys are paths relative to the folder holding manifest.json
+    if key not in manifest:
+        print(f"WARNING: no manifest entry for {key}")
+    metadata = {**doc["metadata"], **manifest.get(key, {})}
     return {"text": text, "metadata": metadata}
 
 """Chunking strategy:"""

@@ -1,30 +1,89 @@
 {
-  "Digital entrepreneurship in Africa _ Brookings.pdf": {
-    "title": "Digital entrepreneurship in Africa",
-    "authors": "Afua Osei",
-    "publisher": "Brookings",
-    "date": "2024-08-01",
-    "type": "report"
+  "Free Report/2025 Partech Africa Tech Venture Capital Report.pdf": {
+    "title": "2025 Partech Africa Tech Venture Capital Report",
+    "authors": "Partech Africa Team",
+    "publisher": "Partech",
+    "date": "2026-01",
+    "type": "Free Report"
   },
-  "Emerging-technology-policies-and-democracy-in-Africa.pdf": {
-    "title": "Emerging technology policies and democracy in Africa: South Africa, Kenya, Nigeria, Ghana, and Zambia in focus",
-    "authors": "Ayantola Alayande, Samuel Segun, Leah Junck",
-    "publisher": "Atlantic Council (Digital Forensic Research Lab)",
-    "date": "2025-03",
-    "type": "report"
-  },
-  "The African Tech Startups Funding Report 2025 (1).pdf": {
+  "Free Report/The African Tech Startups Funding Report 2025.pdf": {
     "title": "The African Tech Startups Funding Report 2025",
     "authors": "Disrupt Africa",
     "publisher": "Disrupt Africa",
-    "date": "2025",
-    "type": "report"
+    "date": "2026-02",
+    "type": "Free Report"
   },
-  "venture-capital-and-the-rise-of-africa-s-tech-startups.pdf": {
+  "Free Report/Venture Capital and the Rise of Africa's Tech Startups.pdf": {
     "title": "Venture Capital and the Rise of Africa's Tech Startups",
     "authors": "Laurien Field, Marcio Cruz, Mariana Pereira-López, David Harrison",
     "publisher": "IFC Economics and Market Research Department",
     "date": "2025-05",
-    "type": "report"
+    "type": "Free Report"
+  },
+  "Open/Articulating and Enacting Development Skilled Returnees in Ghana's ICT Industry.pdf": {
+    "title": "Articulating and Enacting Development: Skilled Returnees in Ghana's ICT Industry",
+    "authors": "Seyram Avle",
+    "publisher": "USC Annenberg School for Communication & Journalism (Information Technologies & International Development, Vol. 10, No. 4)",
+    "date": "2014",
+    "type": "Open"
+  },
+  "Open/Digital Entrepreneurship in Africa- How a Continent Is Escaping Silicon Valley's Long Shadow.pdf": {
+    "title": "Digital Entrepreneurship in Africa: How a Continent Is Escaping Silicon Valley's Long Shadow",
+    "authors": "Nicolas Friederici, Michel Wahome, Mark Graham",
+    "publisher": "The MIT Press",
+    "date": "2020",
+    "type": "Open"
+  },
+  "Open/Nigeria's ICT and Economic Sustainability in the Digital Age.pdf": {
+    "title": "Nigeria's ICT and Economic Sustainability in the Digital Age",
+    "authors": "A. O. Agbeyangi, A. S. Makinde, I. A. Odun-Ayo",
+    "type": "Open"
+  },
+  "Open/The African Journal of Information and Communication (AJIC).pdf": {
+    "title": "The African Journal of Information and Communication (AJIC), Issue 37",
+    "authors": "Various contributors",
+    "publisher": "LINK Centre, University of the Witwatersrand",
+    "date": "2026",
+    "type": "Open"
+  },
+  "Open/What Do Science, Technology, and Innovation Mean from Africa? .pdf": {
+    "title": "What Do Science, Technology, and Innovation Mean from Africa?",
+    "authors": "Clapperton Chakanetsa Mavhunga (editor)",
+    "publisher": "The MIT Press",
+    "date": "2017",
+    "type": "Open"
+  },
+  "Reference/African Fractals- Modern Computing and Indigenous Design.pdf": {
+    "title": "African Fractals: Modern Computing and Indigenous Design",
+    "authors": "Ron Eglash",
+    "publisher": "Rutgers University Press",
+    "date": "1999",
+    "type": "Reference"
+  },
+  "Reference/Design(ing) Here and There Tech Entrepreneurs Global Markets and Reflexivity in Design Processes.pdf": {
+    "title": "Design(ing) 'Here' and 'There': Tech Entrepreneurs, Global Markets, and Reflexivity in Design Processes",
+    "authors": "Seyram Avle, Silvia Lindtner",
+    "publisher": "ACM (CHI 2016)",
+    "date": "2016",
+    "type": "Reference"
+  },
+  "Reference/Experts and Expertise in Colonial Africa Reconsidered.pdf": {
+    "title": "Experts and Expertise in Colonial Africa Reconsidered: Science and the Interpenetration of Knowledge",
+    "authors": "William Beinart, Karen Brown, Daniel Gilfoyle",
+    "publisher": "Oxford University Press on behalf of the Royal African Society (African Affairs, 108/432)",
+    "date": "2009",
+    "type": "Reference"
+  },
+  "Reference/Information and Communication Technology for Development (ICT4D).pdf": {
+    "title": "Information and Communication Technologies for Development",
+    "authors": "Ronaldo Lemos, Joana Varon Ferraz",
+    "type": "Reference"
+  },
+  "Reference/The Zimbabwe Bush Pump- Mechanics of a Fluid Technology.pdf": {
+    "title": "The Zimbabwe Bush Pump: Mechanics of a Fluid Technology",
+    "authors": "Marianne de Laet, Annemarie Mol",
+    "publisher": "Sage Publications (Social Studies of Science, Vol. 30, No. 2)",
+    "date": "2000-04",
+    "type": "Reference"
   }
 }
