@@ -64,9 +64,17 @@ def _find_manifest(source: Path):
     return source.parent, {}
 
 
+# per-page "downloaded by" stamps that publisher sites add to PDFs (MIT Press, Oxford Journals)
+_DOWNLOAD_STAMPS = re.compile(
+    r"Downloaded\s+from\s+\S+\s+by\s+[A-Za-z][A-Za-z .'-]{0,60}?\s+on\s+\d{1,2}\s+[A-Za-z]+\s+\d{4}"
+    r"|by\s+guest\s+on\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+\S+\s+Downloaded\s+from"
+)
+
+
 def normalize_document(doc):
     # strip boilerplate, normalize whitespace, attach country/sourceType from data_dir/manifest.json
-    text = re.sub(r"\s+", " ", doc["text"]).strip()
+    text = _DOWNLOAD_STAMPS.sub(" ", doc["text"])
+    text = re.sub(r"\s+", " ", text).strip()
     source = Path(doc["metadata"]["source"])
     root, manifest = _find_manifest(source)
     key = source.relative_to(root).as_posix() # manifest keys are paths relative to the folder holding manifest.json
