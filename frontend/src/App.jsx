@@ -247,7 +247,9 @@ export default function App() {
   const [scores, setScores] = useState({})
   const listRef = useRef(null)
   const chunkRefs = useRef({})
+  const inlineChunkRefs = useRef({})
   const abortRef = useRef(false)
+  const compareSession = useRef({ messages: [], chunks: [], scores: {} })
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -285,6 +287,31 @@ export default function App() {
     }
   }, [messages, streaming])
 
+  useEffect(() => {
+    if (mode !== 'compare') return
+    compareSession.current = { messages, chunks: activeChunks, scores }
+  }, [mode, messages, activeChunks, scores])
+
+  const changeMode = useCallback(
+    (next) => {
+      if (next === mode || streaming) return
+      setInput('')
+      setHighlightedChunkId(null)
+      if (next === 'compare') {
+        const saved = compareSession.current
+        setMessages(saved.messages)
+        setActiveChunks(saved.chunks)
+        setScores(saved.scores)
+      } else {
+        setMessages([])
+        setActiveChunks([])
+        setScores({})
+      }
+      setMode(next)
+    },
+    [mode, streaming],
+  )
+
   const filteredChunks = useMemo(() => {
     return activeChunks.filter((c) => {
       if (typeFilter.size && !typeFilter.has(c.sourceType)) return false
@@ -298,7 +325,8 @@ export default function App() {
     setInspectorOpen(true)
     setMobileSheetOpen(true)
     requestAnimationFrame(() => {
-      chunkRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      const target = inlineChunkRefs.current[id] || chunkRefs.current[id]
+      target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   }, [])
 
@@ -551,7 +579,7 @@ export default function App() {
         dark={dark}
         onToggleDark={() => setDark((d) => !d)}
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={changeMode}
         inspectorOpen={inspectorOpen}
         onToggleInspector={() => {
           setInspectorOpen((o) => !o)
@@ -568,7 +596,7 @@ export default function App() {
         <main
           className={cn(
             'flex min-w-0 flex-col',
-            inspectorOpen ? 'w-full lg:w-[65%]' : 'w-full',
+            inspectorOpen && mode !== 'compare' ? 'w-full lg:w-[65%]' : 'w-full',
           )}
         >
           <div
@@ -596,6 +624,7 @@ export default function App() {
                         onCiteHover={setHighlightedChunkId}
                         onCiteClick={scrollToChunk}
                         highlightedChunkId={highlightedChunkId}
+                        chunkRefs={inlineChunkRefs}
                       />
                     )
                   }
@@ -625,7 +654,7 @@ export default function App() {
         </main>
 
         {/* Desktop inspector */}
-        {inspectorOpen && (
+        {inspectorOpen && mode !== 'compare' && (
           <aside
             className={cn(
               'hidden w-[35%] min-w-[280px] flex-col border-l border-line lg:flex',
@@ -649,7 +678,7 @@ export default function App() {
         )}
 
         {/* Mobile bottom sheet */}
-        {mobileSheetOpen && (
+        {mobileSheetOpen && mode !== 'compare' && (
           <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-label="Retrieved context">
             <button
               type="button"
@@ -755,15 +784,17 @@ function Header({
         >
           {dark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <button
-          type="button"
-          onClick={onToggleInspector}
-          className="rounded-[4px] p-2 text-ink-muted hover:bg-accent-soft hover:text-accent dark:text-[var(--color-ink-muted-dark)] dark:hover:bg-[var(--color-accent-soft-dark)] dark:hover:text-[var(--color-accent-dark)]"
-          aria-label={inspectorOpen ? 'Hide retrieved context' : 'Show retrieved context'}
-          aria-pressed={inspectorOpen}
-        >
-          {inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-        </button>
+        {mode !== 'compare' && (
+          <button
+            type="button"
+            onClick={onToggleInspector}
+            className="rounded-[4px] p-2 text-ink-muted hover:bg-accent-soft hover:text-accent dark:text-[var(--color-ink-muted-dark)] dark:hover:bg-[var(--color-accent-soft-dark)] dark:hover:text-[var(--color-accent-dark)]"
+            aria-label={inspectorOpen ? 'Hide retrieved context' : 'Show retrieved context'}
+            aria-pressed={inspectorOpen}
+          >
+            {inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          </button>
+        )}
       </div>
     </header>
   )
@@ -899,6 +930,22 @@ function AssistantMessage({
   )
 }
 
+function ComparePane({ label, children }) {
+  return (
+    <section
+      className={cn(
+        'flex h-[min(32rem,70vh)] flex-col overflow-hidden rounded-[6px] border border-line',
+        'bg-canvas-elevated dark:border-[var(--color-line-dark)] dark:bg-[var(--color-canvas-elevated-dark)]',
+      )}
+    >
+      <h3 className="border-b border-line px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-faint dark:border-[var(--color-line-dark)] dark:text-[var(--color-ink-faint-dark)]">
+        {label}
+      </h3>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{children}</div>
+    </section>
+  )
+}
+
 function CompareBlock({
   grounded,
   base,
@@ -907,27 +954,14 @@ function CompareBlock({
   onCiteHover,
   onCiteClick,
   highlightedChunkId,
+  chunkRefs,
 }) {
+  const chunks = grounded.citations || []
+
   return (
-    <div className="w-full">
-      <div className="grid gap-0 md:grid-cols-2">
-        <div className="md:pr-6">
-          <AssistantMessage
-            msg={grounded}
-            score={scores[grounded.id]}
-            onScore={onScore}
-            onCiteHover={onCiteHover}
-            onCiteClick={onCiteClick}
-            highlightedChunkId={highlightedChunkId}
-            compactLabel="Grounded (RAG)"
-          />
-        </div>
-        <div
-          className={cn(
-            'border-t border-line pt-8 md:border-l md:border-t-0 md:pl-6 md:pt-0',
-            'dark:border-[var(--color-line-dark)]',
-          )}
-        >
+    <div className="flex w-full flex-col gap-4">
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <ComparePane label="Base model">
           <AssistantMessage
             msg={base}
             score={scores[base.id]}
@@ -935,10 +969,47 @@ function CompareBlock({
             onCiteHover={onCiteHover}
             onCiteClick={onCiteClick}
             highlightedChunkId={highlightedChunkId}
-            compactLabel="Base model"
           />
-        </div>
+        </ComparePane>
+        <ComparePane label={`Retrieved chunks · ${chunks.length}`}>
+          {chunks.length === 0 ? (
+            <p className="text-[13px] leading-relaxed text-ink-faint dark:text-[var(--color-ink-faint-dark)]">
+              No relevant context found for this question.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2.5">
+              {chunks.map((chunk, i) => (
+                <ChunkCard
+                  key={chunk.id}
+                  rank={i + 1}
+                  chunk={chunk}
+                  highlighted={highlightedChunkId === chunk.id}
+                  refCallback={(el) => {
+                    chunkRefs.current[chunk.id] = el
+                  }}
+                  onHover={onCiteHover}
+                />
+              ))}
+            </ul>
+          )}
+        </ComparePane>
       </div>
+      <article
+        className={cn(
+          'rounded-[6px] border border-line bg-canvas-elevated px-4 py-3',
+          'dark:border-[var(--color-line-dark)] dark:bg-[var(--color-canvas-elevated-dark)]',
+        )}
+      >
+        <AssistantMessage
+          msg={grounded}
+          score={scores[grounded.id]}
+          onScore={onScore}
+          onCiteHover={onCiteHover}
+          onCiteClick={onCiteClick}
+          highlightedChunkId={highlightedChunkId}
+          compactLabel="Grounded (RAG)"
+        />
+      </article>
     </div>
   )
 }

@@ -124,10 +124,18 @@ def api_chat(payload: ChatRequest):
             detail="OPENAI_API_KEY is not set. Add it to the .env file in the project root and restart the API.",
         )
 
+    try:
+        answer = generate_answer(query, mode, chunks)
+        first = next(answer)
+    except StopIteration:
+        first = ""
+        answer = iter(())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"OpenAI request failed: {exc}") from exc
+
     def token_stream():
-        try:
-            yield from generate_answer(query, mode, chunks)
-        except Exception as exc:
-            yield f"\n\nThe model request failed: {exc}"
+        if first:
+            yield first
+        yield from answer
 
     return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
