@@ -1,135 +1,213 @@
-"""
-Retrieval + generation path for the chatbot (boilerplate).
+"""Retrieval and generation for the chatbot.
 
-Online request path (called from backend.api.main):
+Online path:
 
   query
-    → retrieve()          # embed query, search Chroma, filter by threshold
-    → build_prompt()      # inject ranked chunks; instruct citation markers
-    → generate_answer()   # Ollama / OpenAI; stream tokens to the client
-
-Where things should go:
-  - Query embedding (same model as ingestion)
-      → embed_query()
-  - Vector search + optional metadata filters (country, sourceType)
-      → search_store()
-  - Score thresholding ("no relevant context found" when empty)
-      → filter_by_threshold()
-  - Prompt template for culturally-grounded answers + [n] citations
-      → build_prompt()
-  - Base-model path (no corpus) for Compare / Base modes
-      → generate_base()
-  - Grounded path with streaming
-      → generate_grounded()
+    → embed with all-MiniLM-L6-v2 (same model as the jet_lab index)
+    → search Chroma
+    → keep chunks whose cosine similarity is at least SIMILARITY_THRESHOLD
+    → stream an OpenAI answer that cites those chunks as [1], [2], ...
 """
 
-SIMILARITY_THRESHOLD = 0.55  # keep in sync with frontend MOCK.similarityThreshold for now
-LLM_MODEL = "gpt-5.6-luna" 
+from __future__ import annotations
+
+import os
+
+from backend.models import (
+    OPENAI_MODEL,
+    SIMILARITY_THRESHOLD,
+    get_collection,
+    get_embedder,
+    get_openai,
+)
+
+TOP_K = 5
+CANDIDATES = 12
+
+SOURCE_TYPE_MAP = {
+    "Free Report": "report",
+    "Open": "open",
+    "Reference": "reference",
+}
+
+NO_CONTEXT = (
+    "I could not find sufficiently relevant context in the curated corpus for this question. "
+    "Try rephrasing, or ask about African tech, ICT, or entrepreneurship topics covered in the collection."
+)
+
+GROUNDED_SYSTEM = """You are a research assistant for a study of African technology, ICT, and entrepreneurship. The corpus is strongest on Nigeria, Ghana, and pan-African sources.
+
+Rules:
+- Answer only from the numbered context blocks.
+- Cite the blocks you use inline, as [1], [2], and so on, matching the block numbers exactly.
+- If the context does not contain the answer, say so. Do not fill gaps from general knowledge.
+- Be specific. Prefer names, places, dates, and mechanisms that appear in the context."""
+
+BASE_SYSTEM = """You answer questions from general knowledge, without a private document corpus.
+Be direct. When you are generalizing, say so. Do not invent citations."""
 
 
-from backend.models import client, rr_model, collection
-
-def embed_query(query: str):
-    # TODO: embed with the same model used in ingestion
-    return client.embeddings.create(
-        model="text-embedding-3-small",
-        input=query
-    ).data[0].embedding
+def embed_query(query: str) -> list[float]:
+    return get_embedder().encode(query).tolist()
 
 
-def search_store(query, query_embedding, top_k: int = 5, filters: dict | None = None):
-    # TODO: Chroma query; return ranked chunks with scores + metadata
-    res_k = collection.query(
+def _cosine_from_l2(distance: float) -> float:
+    # jet_lab vectors are unit length and the collection uses Chroma's default L2 space.
+    return 1.0 - (distance * distance) / 2.0
+
+
+def infer_country(metadata: dict, text: str) -> str:
+    blob = " ".join(
+        [
+            str(metadata.get("title") or ""),
+            str(metadata.get("source") or ""),
+            text or "",
+        ]
+    ).lower()
+    nigeria = sum(blob.count(word) for word in ("nigeria", "lagos", "abuja"))
+    ghana = sum(blob.count(word) for word in ("ghana", "accra", "kumasi"))
+    if nigeria and not ghana:
+        return "Nigeria"
+    if ghana and not nigeria:
+        return "Ghana"
+    return "Pan-African"
+
+
+def present_chunk(chunk_id: str, text: str, metadata: dict | None, score: float) -> dict:
+    metadata = metadata or {}
+    raw_type = metadata.get("type") or "report"
+    title = metadata.get("title") or str(metadata.get("source") or "Untitled")
+    bounded = max(0.0, min(1.0, float(score)))
+    return {
+        "id": chunk_id,
+        "title": title,
+        "sourceType": SOURCE_TYPE_MAP.get(raw_type, str(raw_type).lower()),
+        "country": infer_country(metadata, text or ""),
+        "score": round(bounded, 4),
+        "text": text or "",
+    }
+
+
+def search_store(query_embedding: list[float], top_k: int = CANDIDATES) -> list[dict]:
+    result = get_collection().query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        where=filters or {}
+        include=["documents", "metadatas", "distances"],
     )
-    metadatas = res_k['metadatas'][0]
-    ids = res_k['ids'][0]
-    chunks = res_k['documents'][0]
+    ids = result.get("ids", [[]])[0]
+    documents = result.get("documents", [[]])[0]
+    metadatas = result.get("metadatas", [[]])[0]
+    distances = result.get("distances", [[]])[0]
 
-    reranked = rr_model.rank(query=query, documents=chunks, return_documents=False, top_k=len(chunks))
-    
-    chunks = [
-            {
-                'id': ids[item['corpus_id']],
-                'title': metadatas[item['corpus_id']]['title'],
-                'sourceType': metadatas[item['corpus_id']]['sourceType'],
-                'country': metadatas[item['corpus_id']]['country'],
-                'text': chunks[item['corpus_id']],
-                'score': item['score']
-            }
-            for item in reranked
-        ]
-
+    chunks = []
+    for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
+        chunks.append(present_chunk(chunk_id, text, metadata, _cosine_from_l2(distance)))
+    chunks.sort(key=lambda chunk: chunk["score"], reverse=True)
     return chunks
 
-#outputs list of dicts with keys 'id', 'title', 'sourceType', 'country', 'score', 'text'
-def filter_by_threshold(chunks, threshold: float = SIMILARITY_THRESHOLD):
-    # TODO: drop weak matches; empty list → UI "no relevant context found"
-    filtered_chunks = [item for item in chunks if item['score'] >= threshold]
-    
-    return filtered_chunks
 
-#Return chunks with: id, title, sourceType, country, score, text
-def retrieve(query: str, top_k: int = 5, filters: dict | None = None):
-    # TODO: embed_query → search_store → filter_by_threshold
-    query_embedding = embed_query(query)
-    chunks = search_store(query, query_embedding, top_k=top_k, filters=filters)
-    filtered_chunks = filter_by_threshold(chunks, threshold=SIMILARITY_THRESHOLD)
-    return filtered_chunks
+def filter_by_threshold(chunks: list[dict], threshold: float = SIMILARITY_THRESHOLD) -> list[dict]:
+    return [chunk for chunk in chunks if chunk["score"] >= threshold]
 
 
-#given chunks is the list of filtered chunks returned by retrieve()
-def build_prompt(query: str, chunks: list):
-    # TODO: numbered context blocks; ask model to cite with [1], [2], ...
-    context_blocks = []
-    for i, chunk in enumerate(chunks, start=1):
-        context_blocks.append(f"[{i}] {chunk['text']}")
-    context_str = "\n\n".join(context_blocks)
-    prompt = f"Only use the following context to answer the question. If there is no context given, do not answer the question. If the context does not contain the answer, do not answer the question.\n\nContext: \n{context_str}\n\nQuestion: {query}"
-    return prompt
+def retrieve(query: str, top_k: int = TOP_K, filters: dict | None = None) -> list[dict]:
+    # Country and source filters are applied in the inspector. `filters` is unused here.
+    _ = filters
+    embedding = embed_query(query)
+    ranked = search_store(embedding, top_k=max(top_k, CANDIDATES))
+    return filter_by_threshold(ranked)[:top_k]
+
+
+def chunks_by_ids(chunk_ids: list[str]) -> list[dict]:
+    if not chunk_ids:
+        return []
+    got = get_collection().get(ids=chunk_ids, include=["documents", "metadatas"])
+    by_id = {}
+    for chunk_id, text, metadata in zip(got["ids"], got["documents"], got["metadatas"]):
+        by_id[chunk_id] = present_chunk(chunk_id, text, metadata, score=1.0)
+    return [by_id[chunk_id] for chunk_id in chunk_ids if chunk_id in by_id]
+
+
+def build_prompt(query: str, chunks: list[dict]) -> str:
+    blocks = []
+    for index, chunk in enumerate(chunks, start=1):
+        title = chunk.get("title") or "Untitled"
+        blocks.append(f"[{index}] {title}\n{chunk['text']}")
+    context = "\n\n".join(blocks)
+    return (
+        "Use only the context below to answer the question. "
+        "Cite supporting blocks inline as [1], [2], and so on.\n\n"
+        f"Context:\n{context}\n\nQuestion: {query}"
+    )
+
+
+def _complete(messages: list[dict]):
+    client = get_openai()
+    return client.chat.completions.create(
+        model=os.getenv("OPENAI_MODEL", OPENAI_MODEL),
+        messages=messages,
+        temperature=0.2,
+        stream=True,
+    )
+
+
+def _yield_deltas(stream):
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
 
 
 def generate_base(query: str):
-    # TODO: stream tokens from LLM with no retrieved context
-    try:
-        response = client.responses.create(
-            model=LLM_MODEL,
-            input=query,
-        )
-        return response.output_text
-    except Exception as e:
-        raise RuntimeError(f"LLM query failed: {e}")
+    stream = _complete(
+        [
+            {"role": "system", "content": BASE_SYSTEM},
+            {"role": "user", "content": query},
+        ]
+    )
+    yield from _yield_deltas(stream)
 
 
-def generate_grounded(query: str, chunks: list):
-    # TODO: build_prompt → stream tokens from Ollama (or other provider)
-    prompt = build_prompt(query, chunks) 
-    try:
-        response = client.responses.create(
-            model=LLM_MODEL,
-            input=prompt,
-        )
-        return response.output_text
-    except Exception as e:
-        raise RuntimeError(f"LLM query failed: {e}")
+def generate_grounded(query: str, chunks: list[dict]):
+    if not chunks:
+        yield NO_CONTEXT
+        return
+    stream = _complete(
+        [
+            {"role": "system", "content": GROUNDED_SYSTEM},
+            {"role": "user", "content": build_prompt(query, chunks)},
+        ]
+    )
+    yield from _yield_deltas(stream)
 
 
-def generate_answer(query: str, mode: str, chunks: list | None = None):
-    # TODO:
-    #   mode == "base"      → generate_base
-    #   mode == "grounded"  → retrieve if needed, then generate_grounded
-    #   mode == "compare"   → API may call both paths; keep generators separate
+def generate_answer(query: str, mode: str, chunks: list[dict] | None = None):
     if mode == "base":
-        return generate_base(query)
-    elif mode == "grounded":
+        yield from generate_base(query)
+        return
+    if mode == "grounded":
         if chunks is None:
             chunks = retrieve(query)
-        return generate_grounded(query, chunks)
-    elif mode == "compare":
-        base_answer = generate_base(query)
-        grounded_answer = generate_grounded(query, chunks or retrieve(query))
-        return {"base": base_answer, "grounded": grounded_answer}
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+        yield from generate_grounded(query, chunks)
+        return
+    if mode == "compare":
+        raise ValueError("Call /api/chat twice for compare mode: once grounded, once base.")
+    raise ValueError(f"Unknown mode: {mode}")
+
+
+def corpus_summary() -> dict:
+    collection = get_collection()
+    got = collection.get(include=["metadatas"])
+    sources = {
+        (metadata or {}).get("source")
+        for metadata in got["metadatas"]
+        if metadata and metadata.get("source")
+    }
+    return {
+        "documentCount": len(sources),
+        "chunkCount": collection.count(),
+        "regions": ["Nigeria", "Ghana", "Pan-African"],
+        "collection": collection.name,
+    }

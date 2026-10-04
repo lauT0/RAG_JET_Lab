@@ -1,6 +1,10 @@
-chromadb
-openai
+# chromadb is pinned to 1.5.9 because that version wrote chroma_db/.
+# Chroma 0.6 cannot open this index.
+chromadb==1.5.9
+openai>=1.40
 PyPDF2
-google
 ollama
-sentence_transformers
+sentence-transformers>=3.0
+python-dotenv>=1.0
+fastapi>=0.115
+uvicorn[standard]>=0.32

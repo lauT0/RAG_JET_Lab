@@ -7,8 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Swap mock → real: uncomment when FastAPI is running on :8000
-      // '/api': 'http://localhost:8000',
+      '/api': 'http://localhost:8000',
     },
   },
 })

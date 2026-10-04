@@ -1,10 +1,15 @@
-# Backend dependencies (install when implementing the API).
-# Keep root requirements.txt for the notebook experiments.
+# API dependencies. Install from the project root:
+#   python3 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# chromadb is pinned to 1.5.9 because that version wrote chroma_db/.
+# Chroma 0.6 cannot open this index.
 
-# fastapi
-# uvicorn[standard]
-# chromadb
-# sentence-transformers
-# ollama
-# pypdf
-# python-multipart
+chromadb==1.5.9
+fastapi>=0.115
+uvicorn[standard]>=0.32
+openai>=1.40
+python-dotenv>=1.0
+sentence-transformers>=3.0
+PyPDF2

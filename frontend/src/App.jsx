@@ -20,23 +20,23 @@ const MOCK = {
   exampleQuestions: [
     {
       id: 'ex1',
-      label: 'Hiring in Lagos',
-      text: 'How do Lagos startups typically hire and onboard early engineers?',
+      label: 'Venture capital',
+      text: 'How has venture capital shaped African tech startups?',
     },
     {
       id: 'ex2',
-      label: 'Accra meetups',
-      text: 'How do Accra developer communities organize meetups and keep them sustainable?',
+      label: 'Ghana returnees',
+      text: "What role do skilled returnees play in Ghana's ICT industry?",
     },
     {
       id: 'ex3',
-      label: 'Infrastructure',
-      text: 'What infrastructure constraints most often shape product decisions in Nigerian and Ghanaian startups?',
+      label: 'Nigeria ICT',
+      text: "How does Nigeria's ICT sector relate to economic sustainability?",
     },
     {
       id: 'ex4',
-      label: 'Mentorship',
-      text: 'What informal mentorship norms show up in West African tech communities?',
+      label: 'Silicon Valley',
+      text: 'How do African digital entrepreneurs relate to Silicon Valley models?',
     },
   ],
   chunks: [
@@ -105,8 +105,8 @@ const MOCK = {
   },
 }
 
-const SOURCE_TYPES = ['report', 'blog', 'forum', 'transcript']
-const COUNTRIES = ['Nigeria', 'Ghana']
+const SOURCE_TYPES = ['report', 'open', 'reference']
+const COUNTRIES = ['Nigeria', 'Ghana', 'Pan-African']
 const MODES = [
   { id: 'grounded', label: 'Grounded (RAG)' },
   { id: 'base', label: 'Base model' },
@@ -119,11 +119,21 @@ const RUBRIC_DIMS = [
   { id: 'nuance', label: 'Nuance' },
 ]
 
-const USE_MOCK = true // set false when FastAPI /api/chat & /api/retrieve are live
+const USE_MOCK = false
 
 // -----------------------------------------------------------------------------
 // API boundary — swap implementations here only
 // -----------------------------------------------------------------------------
+async function readError(res, fallback) {
+  try {
+    const data = await res.json()
+    if (typeof data?.detail === 'string') return data.detail
+  } catch {
+    /* response was not JSON */
+  }
+  return fallback
+}
+
 async function retrieveContext(query) {
   if (!USE_MOCK) {
     const res = await fetch('/api/retrieve', {
@@ -131,7 +141,7 @@ async function retrieveContext(query) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
     })
-    if (!res.ok) throw new Error('retrieve failed')
+    if (!res.ok) throw new Error(await readError(res, 'retrieve failed'))
     return res.json()
   }
 
@@ -164,7 +174,7 @@ async function* streamChat({ query, mode, chunks }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, mode, chunk_ids: chunks?.map((c) => c.id) }),
     })
-    if (!res.ok) throw new Error('chat failed')
+    if (!res.ok) throw new Error(await readError(res, 'chat failed'))
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     while (true) {
@@ -216,6 +226,9 @@ function cn(...xs) {
 // App
 // =============================================================================
 export default function App() {
+  const [corpus, setCorpus] = useState(
+    USE_MOCK ? MOCK.corpus : { documentCount: '…', regions: [] },
+  )
   const [dark, setDark] = useState(() =>
     typeof window !== 'undefined'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -239,6 +252,32 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
+
+  useEffect(() => {
+    if (USE_MOCK) return undefined
+    let cancelled = false
+    let timer
+    const load = (attempt) => {
+      fetch('/api/corpus')
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => {
+          if (cancelled) return
+          setCorpus({
+            documentCount: data.documentCount,
+            regions: data.regions || [],
+          })
+        })
+        .catch(() => {
+          if (cancelled || attempt >= 8) return
+          timer = setTimeout(() => load(attempt + 1), 1000)
+        })
+    }
+    load(0)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [])
 
   useEffect(() => {
     if (listRef.current) {
@@ -302,21 +341,24 @@ export default function App() {
       const userMsg = { id: uid(), role: 'user', content: query }
       setMessages((m) => [...m, userMsg])
 
-      let chunks = []
-      let retrieveLatency = 0
-      if (mode !== 'base') {
+      try {
+        let chunks = []
+        let retrieveLatency = 0
+        if (mode !== 'base') {
         const retrieved = await retrieveContext(query)
-        chunks = retrieved.chunks.filter((c) => c.score >= MOCK.similarityThreshold)
-        retrieveLatency = retrieved.latencyMs
-        setActiveChunks(retrieved.chunks)
-      } else {
-        setActiveChunks([])
-      }
+          chunks = USE_MOCK
+            ? retrieved.chunks.filter((c) => c.score >= MOCK.similarityThreshold)
+            : retrieved.chunks
+          retrieveLatency = retrieved.latencyMs
+          setActiveChunks(retrieved.chunks)
+        } else {
+          setActiveChunks([])
+        }
 
-      const noContext = mode !== 'base' && chunks.length === 0
-      const questionId = MOCK.exampleQuestions.find((e) => e.text === query)?.id ?? null
+        const noContext = mode !== 'base' && chunks.length === 0
+        const questionId = MOCK.exampleQuestions.find((e) => e.text === query)?.id ?? null
 
-      if (mode === 'compare') {
+        if (mode === 'compare') {
         const groundedId = uid()
         const baseId = uid()
         setMessages((m) => [
@@ -353,12 +395,7 @@ export default function App() {
 
         const t0 = performance.now()
         let gText = ''
-        const key = questionId ?? 'default'
-        const gFull =
-          chunks.length === 0
-            ? 'I could not find sufficiently relevant context in the curated corpus for this question.'
-            : MOCK.groundedAnswers[key] || MOCK.groundedAnswers.default
-        for await (const token of streamTokens(gFull)) {
+        for await (const token of streamChat({ query, mode: 'grounded', chunks })) {
           if (abortRef.current) break
           gText += token
           setMessages((msgs) =>
@@ -368,9 +405,8 @@ export default function App() {
         const gLatency = Math.round(performance.now() - t0 + retrieveLatency)
 
         let bText = ''
-        const bFull = MOCK.baseAnswers[key] || MOCK.baseAnswers.default
         const t1 = performance.now()
-        for await (const token of streamTokens(bFull)) {
+        for await (const token of streamChat({ query, mode: 'base', chunks: [] })) {
           if (abortRef.current) break
           bText += token
           setMessages((msgs) =>
@@ -439,8 +475,32 @@ export default function App() {
           ),
         )
       }
-
-      setStreaming(false)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Request failed'
+        setMessages((m) => {
+          if (!m.some((msg) => msg.streaming)) {
+            return [
+              ...m,
+              {
+                id: uid(),
+                role: 'assistant',
+                answerMode: mode,
+                content: message,
+                streaming: false,
+                query,
+                questionId: null,
+                citations: [],
+                meta: { retrievalCount: 0, latencyMs: 0, noContext: true },
+              },
+            ]
+          }
+          return m.map((msg) =>
+            msg.streaming ? { ...msg, streaming: false, content: msg.content || message } : msg,
+          )
+        })
+      } finally {
+        setStreaming(false)
+      }
     },
     [input, streaming, mode],
   )
@@ -497,6 +557,7 @@ export default function App() {
           setInspectorOpen((o) => !o)
           setMobileSheetOpen((o) => !o)
         }}
+        corpus={corpus}
         onExport={exportScores}
         hasScores={Object.keys(scores).length > 0}
         streaming={streaming}
@@ -649,6 +710,7 @@ function Header({
   onExport,
   hasScores,
   streaming,
+  corpus,
 }) {
   return (
     <header
@@ -663,7 +725,7 @@ function Header({
           Culturally-grounded RAG
         </h1>
         <p className="mt-0.5 font-mono text-[11px] text-ink-faint dark:text-[var(--color-ink-faint-dark)]">
-          {MOCK.corpus.documentCount} documents · {MOCK.corpus.regions.join(', ')}
+          {corpus.documentCount} documents · {corpus.regions.join(', ')}
         </p>
       </div>
 
@@ -744,9 +806,9 @@ function EmptyState({ onPick }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-start pt-6 sm:pt-16">
       <p className="text-[17px] leading-[1.65] text-ink-muted dark:text-[var(--color-ink-muted-dark)]">
-        Ask about tech ecosystems and developer communities in Nigeria and Ghana.
-        Answers in Grounded mode are retrieved from a curated corpus of reports,
-        community blogs, forum threads, and transcribed talks.
+        Ask about African technology, ICT, and entrepreneurship, especially in
+        Nigeria and Ghana. Grounded answers are retrieved from the indexed corpus
+        of reports and research papers.
       </p>
       <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-faint dark:text-[var(--color-ink-faint-dark)]">
         Example questions
