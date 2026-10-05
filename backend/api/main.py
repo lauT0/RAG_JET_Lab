@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,7 +59,7 @@ class RetrieveRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1)
     mode: str = "grounded"
-    chunk_ids: list[str] | None = None
+    chunk_ids: Optional[list[str]] = None
 
 
 @app.get("/api/health")
