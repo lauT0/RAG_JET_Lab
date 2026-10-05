@@ -13,6 +13,7 @@ Output keeps the input columns and adds:
 
   answer   the grounded answer text
   chunks   JSON list of retrieved chunk texts
+  titles   JSON list of each chunk's source document title, aligned with chunks
   scores   JSON list of cosine similarity scores, aligned with chunks
 
 Start the API first, from the project root:
@@ -68,6 +69,7 @@ def run_query(api: str, query: str) -> pd.Series:
         {
             "answer": answer,
             "chunks": json.dumps([chunk["text"] for chunk in chunks], ensure_ascii=False),
+            "titles": json.dumps([chunk["title"] for chunk in chunks], ensure_ascii=False),
             "scores": json.dumps([chunk["score"] for chunk in chunks]),
             "error": error,
         }
